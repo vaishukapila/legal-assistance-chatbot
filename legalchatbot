@@ -14,7 +14,7 @@ import speech_recognition as sr
 from docx import Document  # Import the python-docx library
 
 # Configure Google API key
-genai.configure(api_key="AIzaSyCJv8tanTPTQYfXrGP-hz5i6d9v3Kr8JAE")
+genai.configure(api_key="YOUR_GEMINI_API_KEY")
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 # Initialize OCR Reader
