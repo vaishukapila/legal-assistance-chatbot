@@ -1,0 +1,307 @@
+#code for legal assistance chatbot
+
+import streamlit as st
+from PyPDF2 import PdfReader
+from PIL import Image
+import easyocr
+import os
+from translate import Translator as TextTranslator
+from gtts import gTTS
+import tempfile
+import google.generativeai as genai
+import numpy as np
+import speech_recognition as sr
+from docx import Document  # Import the python-docx library
+
+# Configure Google API key
+genai.configure(api_key="AIzaSyCJv8tanTPTQYfXrGP-hz5i6d9v3Kr8JAE")
+model = genai.GenerativeModel("gemini-2.0-flash")
+
+# Initialize OCR Reader
+reader = easyocr.Reader(['en'])
+
+# Supported Languages for Translation
+languages = {"English": "en", "Hindi (हिन्दी)": "hi", "Telugu (తెలుగు)": "te", "Tamil (தமிழ்)": "ta"}
+
+
+# Function to extract text from PDF
+def extract_text_from_pdf(pdf_file):
+    pdf_reader = PdfReader(pdf_file)
+    text = "\n".join([page.extract_text() for page in pdf_reader.pages if page.extract_text()])
+    return text
+
+
+# Function to extract text from images
+def extract_text_from_image(image_file):
+    image = Image.open(image_file)
+    image_np = np.array(image)  # Convert to NumPy array
+    result = reader.readtext(image_np, detail=0)
+    return "\n".join(result)
+
+
+# Function for AI Legal Response
+def generate_ai_response(query):
+    try:
+        response = model.generate_content(query)
+        return response.text if response and response.text else "Failed to generate a response."
+    except Exception as e:
+        return f"Error generating response: {e}"
+
+
+# Function for Text-to-Speech
+def text_to_speech(text, lang='en'):
+    tts = gTTS(text=text, lang=lang)
+    temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    tts.save(temp_audio.name)
+    return temp_audio.name
+
+
+# Function for Speech-to-Text
+def speech_to_text(lang='en'):
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        st.write("Speak now...")
+        audio = recognizer.listen(source)
+        try:
+            text = recognizer.recognize_google(audio, language=lang)
+            return text
+        except sr.UnknownValueError:
+            return "Sorry, I could not understand the audio."
+        except sr.RequestError:
+            return "Sorry, there was an issue with the speech recognition service."
+
+
+# Function for Translation
+def translate_text(text, src_lang, dest_lang):
+    translator = TextTranslator(from_lang=src_lang, to_lang=dest_lang)
+    translation = translator.translate(text)
+    return translation
+
+
+# Function to calculate the brightness of an image
+def calculate_brightness(image):
+    grayscale_image = image.convert('L')
+    histogram = grayscale_image.histogram()
+    pixels = sum(histogram)
+    brightness = scale = len(histogram)
+    for index in range(0, scale):
+        ratio = histogram[index] / pixels
+        brightness += ratio * (-scale + index)
+    return 1 if brightness == 255 else brightness / scale
+
+
+# Set Background Image and adjust font color
+def set_background_image(image_url):
+    # Download the image and calculate brightness
+    import requests
+    from io import BytesIO
+    response = requests.get(image_url)
+    image = Image.open(BytesIO(response.content))
+    brightness = calculate_brightness(image)
+
+    # Set colorful font styles
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("{image_url}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+        h1, h2, h3, h4, h5, h6 {{
+            background: linear-gradient(90deg, #FF7E5F, #FEB47B);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: bold;
+        }}
+        .css-1d391kg, .css-1d391kg p, .css-1d391kg a, .css-1d391kg label, .css-1d391kg textarea, .css-1d391kg input, .css-1d391kg button {{
+            color: #FFD700; /* Golden color for general text */
+            font-weight: bold;
+        }}
+        .stButton>button {{
+            background: linear-gradient(90deg, #6A11CB, #2575FC);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+        }}
+        .stTextArea>textarea {{
+            background-color: rgba(255, 255, 255, 0.8);
+            color: #333;
+            border-radius: 5px;
+            padding: 10px;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# Function to create a Word document
+def create_word_document(text, doc_type):
+    doc = Document()
+    doc.add_heading(doc_type, level=1)  # Add the document type as the title
+    doc.add_paragraph(text)  # Add the generated text to the document
+    return doc
+
+
+# Streamlit UI
+def main():
+    # Set background image
+    background_image_url = "https://i.pinimg.com/736x/2f/b5/44/2fb54499563c33ab21fd3bc7a44bb165.jpg"
+    set_background_image(background_image_url)
+
+    st.title("⚖️ AI-Powered Legal Assistant")
+    st.sidebar.title("Menu")
+    menu = [
+        "AI-Powered Contract Analysis",
+        "Legal Compliance Chatbot",
+        "Risk & Compliance Assessment",
+        "Smart Legal Document Generator",
+        "Multilingual & Voice Support",
+        "Legal Precedents & Case Law Search",
+        "Deployment & Scalability"
+    ]
+    choice = st.sidebar.selectbox("Select Feature", menu)
+
+    ### **Feature Implementations**
+    if choice == "AI-Powered Contract Analysis":
+        st.subheader("📄 AI-Powered Contract Analysis")
+        uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg", "txt"])
+        if uploaded_file:
+            extracted_text = extract_text_from_pdf(
+                uploaded_file) if uploaded_file.type == "application/pdf" else extract_text_from_image(uploaded_file)
+            st.markdown("### Extracted Text:")
+            st.text_area("", extracted_text, height=300)
+            analysis = generate_ai_response(f"Analyze this contract: {extracted_text}")
+            st.markdown("### AI-Based Clause Analysis")
+            st.write(analysis)
+
+    elif choice == "Legal Compliance Chatbot":
+        st.subheader("💬 Legal Compliance Chatbot")
+
+        # Voice Input Section
+        st.markdown("### 🎤 Voice Input")
+        voice_lang = st.selectbox("Select Voice Input Language", list(languages.keys()), index=0)
+        if st.button("🎤 Start Voice Input"):
+            voice_text = speech_to_text(lang=languages[voice_lang])
+            st.text_area("Voice Input Text", voice_text, height=100)
+            if voice_text:
+                response = generate_ai_response(voice_text)
+                st.write(response)
+                audio_path = text_to_speech(response, lang=languages[voice_lang])
+                st.audio(audio_path)
+
+        # Text Input Section
+        st.markdown("### ✍️ Text Input")
+        user_query = st.text_input("Enter your legal query")
+        if user_query:
+            response = generate_ai_response(user_query)
+            st.write(response)
+            audio_path = text_to_speech(response)
+            st.audio(audio_path)
+
+    elif choice == "Risk & Compliance Assessment":
+        st.subheader("🚨 Risk & Compliance Assessment")
+        uploaded_file = st.file_uploader("Upload PDF or Image", type=["pdf", "png", "jpg", "jpeg", "txt"])
+        if uploaded_file:
+            extracted_text = extract_text_from_pdf(
+                uploaded_file) if uploaded_file.type == "application/pdf" else extract_text_from_image(uploaded_file)
+            st.markdown("### Extracted Contract Text:")
+            st.text_area("", extracted_text, height=300)
+            risk_assessment = generate_ai_response(f"Assess the risks in this contract: {extracted_text}")
+            st.markdown("### AI-Based Risk Analysis")
+            st.write(risk_assessment)
+
+    elif choice == "Smart Legal Document Generator":
+        st.subheader("📝 Smart Legal Document Generator")
+        doc_type = st.selectbox("Select Document Type", ["NDA", "MOU", "Partnership Agreement", "Business Policy"])
+        user_inputs = st.text_area("Provide details for the document:")
+
+        if st.button("Generate Document"):
+            generated_doc = generate_ai_response(f"Generate a {doc_type} with the following details: {user_inputs}")
+            st.markdown("### Generated Document:")
+            st.text_area("", generated_doc, height=300, key="generated_doc")
+
+            # Create a Word document
+            doc = create_word_document(generated_doc, doc_type)
+
+            # Save the Word document to a temporary file
+            temp_doc = tempfile.NamedTemporaryFile(delete=False, suffix=".docx")
+            doc.save(temp_doc.name)
+
+            # Add a download button for the generated Word document
+            with open(temp_doc.name, "rb") as file:
+                st.download_button(
+                    label="📥 Download Generated Document (Word)",
+                    data=file,
+                    file_name=f"{doc_type}_document.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+
+            # Text-to-Speech for confirmation
+            audio_path = text_to_speech("Your document has been generated.")
+            st.audio(audio_path)
+
+    elif choice == "Multilingual & Voice Support":
+        st.subheader("🗣️ Multilingual & Voice Support")
+
+        # **AI Translator**
+        st.markdown("### 🌍 AI Translator")
+        input_lang = st.selectbox("Select Input Language", list(languages.keys()), index=0)
+        output_lang = st.selectbox("Select Output Language", list(languages.keys()), index=1)
+
+        # Voice Input Section
+        st.markdown("### 🎤 Voice Input")
+        if st.button("🎤 Start Voice Input"):
+            voice_text = speech_to_text(lang=languages[input_lang])
+            st.text_area("Voice Input Text", voice_text, height=100, key="voice_input")
+            if voice_text:
+                translated_text = translate_text(voice_text, src_lang=languages[input_lang],
+                                                 dest_lang=languages[output_lang])
+                st.markdown("### 📝 Translated Text:")
+                st.text_area("", translated_text, height=100, key="translated_text")
+                audio_path = text_to_speech(translated_text, lang=languages[output_lang])
+                st.audio(audio_path)
+
+        # Text Input Section
+        st.markdown("### ✍️ Text Input")
+        text_input = st.text_area("Enter text to translate")
+
+        if st.button("🔄 Translate & Speak"):
+            if text_input:
+                translated_text = translate_text(text_input, src_lang=languages[input_lang],
+                                                 dest_lang=languages[output_lang])
+                st.markdown("### 📝 Translated Text:")
+                st.text_area("", translated_text, height=100, key="translated_text")
+                audio_path = text_to_speech(translated_text, lang=languages[output_lang])
+                st.audio(audio_path)
+            else:
+                st.warning("⚠️ Please enter text to translate.")
+
+    elif choice == "Legal Precedents & Case Law Search":
+        st.subheader("🔍 Legal Precedents & Case Law Search")
+        case_query = st.text_input("Enter legal keywords")
+        if case_query:
+            case_results = generate_ai_response(f"Search legal precedents for: {case_query}")
+            st.markdown("### AI-Based Case Law Search Results")
+            st.write(case_results)
+
+    elif choice == "Deployment & Scalability":
+        st.subheader("🚀 Deployment & Scalability")
+        st.markdown("""
+        - Web-based or mobile application
+        - Secure handling of sensitive legal data
+        - Complies with GDPR, HIPAA, etc.
+        """)
+
+    st.markdown("---")
+    st.markdown("### 🛠️ Vinny Legal Assistance Bot ❤️")
+
+
+if __name__ == "__main__":
+    main()
